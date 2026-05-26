@@ -1,1 +1,1 @@
-window.__airdrawLatest = 'AirDrawV1';
+window.__airdrawLatest = 'AirDrawV2';
