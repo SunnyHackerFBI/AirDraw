@@ -237,7 +237,7 @@
 // ── Version & Update ──────────────────────────────────────────────────────────
 const APP_VERSION = 'AirDrawV1';
 const VERSION_JS  = 'https://cdn.jsdelivr.net/gh/SunnyHackerFBI/AirDraw@main/version.js';
-const REPO_ZIP    = 'https://github.com/SunnyHackerFBI/AirDraw/archive/refs/heads/main.zip';
+const FILE_BASE   = 'https://cdn.jsdelivr.net/gh/SunnyHackerFBI/AirDraw@main/New%20Versions/';
 
 function autoCheckForUpdate() {
     const old = document.getElementById('__vcheck');
@@ -259,7 +259,7 @@ function showUpdatePopup(latest) {
     const popup = document.getElementById('updatePopup');
     document.getElementById('updatePopupVersion').textContent =
         `A new version is out: ${latest}`;
-    document.getElementById('updateDownloadBtn').onclick = () => window.open(REPO_ZIP);
+    document.getElementById('updateDownloadBtn').onclick = () => window.open(FILE_BASE + latest + '.html');
     document.getElementById('updateDismissBtn').onclick  = () => popup.classList.remove('visible');
     popup.classList.add('visible');
 }
