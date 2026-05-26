@@ -27,6 +27,16 @@
             box-shadow:0 4px 30px rgba(0,0,0,.5);
             display:flex; flex-direction:column; gap:15px; min-width:200px;
         }
+        #mainPanelHeader { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+        #mainPanelToggle {
+            background:none; border:1px solid #444; color:#aaa;
+            padding:1px 9px; border-radius:6px; font-size:1.1rem;
+            cursor:pointer; line-height:1.4; flex-shrink:0;
+        }
+        #mainPanelToggle:hover { border-color:#888; color:#fff; background:rgba(255,255,255,.05); }
+        #mainPanel.minimized #mainPanelContent { display:none; }
+        #mainPanel.minimized { gap:0; }
+        }
         h1 {
             margin:0; font-size:1.5rem; text-transform:uppercase; letter-spacing:2px;
             background:linear-gradient(90deg,#00f2fe,#4facfe);
@@ -79,50 +89,65 @@
             -webkit-background-clip:text; -webkit-text-fill-color:transparent;
         }
         #splashSubtitle { margin:0; color:#888; font-size:.8rem; letter-spacing:1px; text-align:right; align-self:flex-end; }
-        #splashBtns { display:flex; gap:12px; justify-content:center; }
+        #splashBtns { display:flex; justify-content:center; }
         #splashStartBtn {
             background:linear-gradient(90deg,#00f2fe,#4facfe); color:#000;
             font-size:1rem; padding:12px 24px; font-weight:bold;
             box-shadow:0 0 18px rgba(0,242,254,.5); border-radius:8px;
         }
         #splashStartBtn:hover { box-shadow:0 0 28px rgba(0,242,254,.8); }
-        #splashUpdateBtn {
-            background:#1e1e2e; color:#ccc; border:1px solid #444;
-            font-size:1rem; padding:12px 20px; border-radius:8px;
-        }
-        #splashUpdateBtn:hover { background:#2a2a3e; border-color:#666; }
-        #splashStatus { font-size:.82rem; color:#aaa; min-height:1.2em; }
 
-        /* ── App Settings Button/Panel ──────────────────────────────────────── */
-        #appSettingsBtn {
-            position:absolute; bottom:20px; right:20px; z-index:100;
-            background:linear-gradient(90deg,#667eea,#764ba2); color:#fff;
-            font-size:.95rem; padding:10px 16px;
-            box-shadow:0 0 15px rgba(102,126,234,.4); border-radius:8px;
+        /* ── Update Popup ───────────────────────────────────────────────────── */
+        #updatePopup {
+            position:fixed; inset:0; z-index:300;
+            background:rgba(0,0,0,.75); backdrop-filter:blur(6px);
+            display:none; align-items:center; justify-content:center;
         }
-        #appSettingsBtn:hover { box-shadow:0 0 25px rgba(102,126,234,.7); }
-        #appSettingsPanel {
-            right:20px; bottom:70px; left:auto; top:auto;
-            border:1px solid #667eea;
-            box-shadow:0 0 20px rgba(102,126,234,.25);
-            display:none;
+        #updatePopup.visible { display:flex; }
+        #updatePopupBox {
+            background:rgba(15,15,15,.97); border:1px solid #00f2fe;
+            box-shadow:0 0 50px rgba(0,242,254,.4); border-radius:20px;
+            padding:36px 32px; display:flex; flex-direction:column;
+            gap:16px; max-width:380px; width:90%; text-align:center;
         }
-        #appSettingsPanel.visible { display:flex; }
-        #settingsUpdateBtn { background:rgba(102,126,234,.25); border:1px solid #667eea; }
-        #settingsUpdateBtn:hover { background:rgba(102,126,234,.45); }
+        #updatePopupTitle {
+            margin:0; font-size:1.5rem; font-weight:bold;
+            background:linear-gradient(90deg,#00f2fe,#4facfe);
+            -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+        }
+        #updatePopupVersion { color:#ccc; font-size:.95rem; }
+        #updateDownloadBtn {
+            background:linear-gradient(90deg,#00f2fe,#4facfe); color:#000;
+            font-size:1rem; padding:12px; font-weight:bold;
+            box-shadow:0 0 18px rgba(0,242,254,.5); border-radius:8px;
+        }
+        #updateDownloadBtn:hover { box-shadow:0 0 28px rgba(0,242,254,.8); }
+        #updateDismissBtn {
+            background:none; color:#555; border:none;
+            font-size:.85rem; cursor:pointer; padding:4px;
+        }
+        #updateDismissBtn:hover { color:#888; background:none; }
     </style>
 </head>
 <body>
+
+<!-- ── Update Popup ───────────────────────────────────────────────────────── -->
+<div id="updatePopup">
+    <div id="updatePopupBox">
+        <div id="updatePopupTitle">🆕 Update Available!</div>
+        <div id="updatePopupVersion"></div>
+        <button id="updateDownloadBtn">⬇ Download Now</button>
+        <button id="updateDismissBtn">Remind me later</button>
+    </div>
+</div>
 
 <!-- ── Splash Screen ──────────────────────────────────────────────────────── -->
 <div id="splashScreen">
     <div id="splashBox">
         <h1 id="splashTitle">AirDraw</h1>
         <div id="splashBtns">
-            <button id="splashUpdateBtn">⬇ Check for Update</button>
             <button id="splashStartBtn">▶ Start</button>
         </div>
-        <div id="splashStatus"></div>
         <p id="splashSubtitle">Made by Z</p>
     </div>
 </div>
@@ -174,50 +199,47 @@
     </div>
 </div>
 
-<!-- ── App Settings Button / Panel ──────────────────────────────────────── -->
-<button id="appSettingsBtn">⚙ Settings</button>
-<div id="appSettingsPanel" class="ui-panel">
-    <h2 style="margin:0;color:#a78bfa;font-size:1.1rem;">App Settings</h2>
-    <div class="instructions">Version: <span id="versionDisplay" style="color:#fff;font-weight:bold;"></span></div>
-    <button id="settingsUpdateBtn">⬇ Check for Update</button>
-    <div id="settingsUpdateStatus" class="instructions" style="min-height:1.4em;"></div>
-</div>
 
-<div class="ui-panel">
-    <h1>Air Draw</h1>
-    <div class="control-group">
-        <label for="bgMode">Background</label>
-        <select id="bgMode">
-            <option value="camera">Live Camera</option>
-            <option value="black">Solid Black</option>
-            <option value="white">Solid White</option>
-        </select>
+<div class="ui-panel" id="mainPanel">
+    <div id="mainPanelHeader">
+        <h1>Air Draw</h1>
+        <button id="mainPanelToggle">−</button>
     </div>
-    <div class="control-group">
-        <label for="colorPicker">Neon Color</label>
-        <input type="color" id="colorPicker" value="#00ffff">
-    </div>
-    <div class="control-group">
-        <label for="thicknessSlider">Brush Thickness</label>
-        <input type="range" id="thicknessSlider" min="2" max="30" value="8">
-    </div>
-    <div class="control-group">
-        <label for="glowSlider">Glow Intensity</label>
-        <input type="range" id="glowSlider" min="0" max="40" value="15">
-    </div>
-    <div class="control-group">
-        <label for="opacitySlider">Stroke Opacity</label>
-        <input type="range" id="opacitySlider" min="10" max="100" value="100">
-    </div>
-    <div class="status-box" id="statusBox">WAITING...</div>
-    <button id="clearBtn">Clear Canvas</button>
-    <button id="pauseBtn">⏸ Pause Drawing</button>
-    <div class="instructions">
-        • <span>1 Finger</span>: Draw<br>
-        • <span>Thumb Up</span>: Drag Shape<br>
-        • <span>2 Fingers</span>: Erase<br>
-        • <span>Closed Fist</span>: Pause<br>
-        • <span>Space</span>: Hold to Pause
+    <div id="mainPanelContent">
+        <div class="control-group">
+            <label for="bgMode">Background</label>
+            <select id="bgMode">
+                <option value="camera">Live Camera</option>
+                <option value="black">Solid Black</option>
+                <option value="white">Solid White</option>
+            </select>
+        </div>
+        <div class="control-group">
+            <label for="colorPicker">Neon Color</label>
+            <input type="color" id="colorPicker" value="#00ffff">
+        </div>
+        <div class="control-group">
+            <label for="thicknessSlider">Brush Thickness</label>
+            <input type="range" id="thicknessSlider" min="2" max="30" value="8">
+        </div>
+        <div class="control-group">
+            <label for="glowSlider">Glow Intensity</label>
+            <input type="range" id="glowSlider" min="0" max="40" value="15">
+        </div>
+        <div class="control-group">
+            <label for="opacitySlider">Stroke Opacity</label>
+            <input type="range" id="opacitySlider" min="10" max="100" value="100">
+        </div>
+        <div class="status-box" id="statusBox">WAITING...</div>
+        <button id="clearBtn">Clear Canvas</button>
+        <button id="pauseBtn">⏸ Pause Drawing</button>
+        <div class="instructions">
+            • <span>1 Finger</span>: Draw<br>
+            • <span>Thumb Up</span>: Drag Shape<br>
+            • <span>2 Fingers</span>: Erase<br>
+            • <span>Closed Fist</span>: Pause<br>
+            • <span>Space</span>: Hold to Pause
+        </div>
     </div>
 </div>
 
@@ -228,12 +250,11 @@
 
 <script>
 // ── Version & Update ──────────────────────────────────────────────────────────
-const APP_VERSION  = 'AirDrawV2';
-const VERSION_JS   = 'https://raw.githubusercontent.com/SunnyHackerFBI/AirDraw/main/version.js';
-const REPO_ZIP     = 'https://github.com/SunnyHackerFBI/AirDraw/archive/refs/heads/main.zip';
+const APP_VERSION = 'AirDrawV2';
+const VERSION_JS  = 'https://raw.githubusercontent.com/SunnyHackerFBI/AirDraw/main/version.js';
+const REPO_ZIP    = 'https://github.com/SunnyHackerFBI/AirDraw/archive/refs/heads/main.zip';
 
-function checkForUpdate(statusEl) {
-    statusEl.innerHTML = 'Checking…';
+function autoCheckForUpdate() {
     const old = document.getElementById('__vcheck');
     if (old) old.remove();
     delete window.__airdrawLatest;
@@ -244,31 +265,33 @@ function checkForUpdate(statusEl) {
         const latest = window.__airdrawLatest || APP_VERSION;
         const cur = parseInt(APP_VERSION.match(/V(\d+)/i)?.[1] ?? '0', 10);
         const rem = parseInt(latest.match(/V(\d+)/i)?.[1] ?? '0', 10);
-        if (rem <= cur) {
-            statusEl.textContent = `✓ You're on the latest version (${APP_VERSION})`;
-        } else {
-            statusEl.innerHTML = `<div style="margin-bottom:6px">New version available: <strong style="color:#00f2fe">${latest}</strong></div><button onclick="window.open('${REPO_ZIP}')" style="background:linear-gradient(90deg,#00f2fe,#4facfe);color:#000;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-weight:bold;width:100%">⬇ Download Full Update</button>`;
-        }
+        if (rem > cur) showUpdatePopup(latest);
     };
-    s.onerror = () => { statusEl.textContent = 'Could not reach update server. Are you online?'; };
     document.head.appendChild(s);
 }
+
+function showUpdatePopup(latest) {
+    const popup = document.getElementById('updatePopup');
+    document.getElementById('updatePopupVersion').textContent =
+        `A new version is out: ${latest}`;
+    document.getElementById('updateDownloadBtn').onclick = () => window.open(REPO_ZIP);
+    document.getElementById('updateDismissBtn').onclick  = () => popup.classList.remove('visible');
+    popup.classList.add('visible');
+}
+
+autoCheckForUpdate();
+
+// ── Main Panel Minimize ───────────────────────────────────────────────────────
+const mainPanelToggle = document.getElementById('mainPanelToggle');
+const mainPanel       = document.getElementById('mainPanel');
+mainPanelToggle.addEventListener('click', () => {
+    const minimized = mainPanel.classList.toggle('minimized');
+    mainPanelToggle.textContent = minimized ? '+' : '−';
+});
 
 // ── Splash Screen ─────────────────────────────────────────────────────────────
 document.getElementById('splashStartBtn').addEventListener('click', () => {
     document.getElementById('splashScreen').style.display = 'none';
-});
-document.getElementById('splashUpdateBtn').addEventListener('click', () => {
-    checkForUpdate(document.getElementById('splashStatus'));
-});
-
-// ── App Settings Panel ────────────────────────────────────────────────────────
-document.getElementById('versionDisplay').textContent = APP_VERSION;
-const appSettingsBtn   = document.getElementById('appSettingsBtn');
-const appSettingsPanel = document.getElementById('appSettingsPanel');
-appSettingsBtn.addEventListener('click', () => appSettingsPanel.classList.toggle('visible'));
-document.getElementById('settingsUpdateBtn').addEventListener('click', () => {
-    checkForUpdate(document.getElementById('settingsUpdateStatus'));
 });
 
 // ── DOM ───────────────────────────────────────────────────────────────────────
