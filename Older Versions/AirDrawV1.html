@@ -1,1 +1,1118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AirDraw</title>
 
+    <!-- MediaPipe (CDN – requires internet connection) -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+
+    <style>
+        body { margin:0; padding:0; overflow:hidden; background:#000; font-family:'Segoe UI',Tahoma,Geneva,Verdana,sans-serif; color:#fff; }
+
+        canvas { position:absolute; top:0; left:0; width:100vw; height:100vh; transform:scaleX(-1); }
+        #videoCanvas  { z-index:0; }
+        #drawCanvas   { z-index:1; }
+        #cursorCanvas { z-index:2; pointer-events:none; }
+
+        .ui-panel {
+            position:absolute; top:20px; left:20px; z-index:10;
+            background:rgba(20,20,20,.8); backdrop-filter:blur(10px);
+            padding:20px; border-radius:15px; border:1px solid #333;
+            box-shadow:0 4px 30px rgba(0,0,0,.5);
+            display:flex; flex-direction:column; gap:15px; min-width:200px;
+        }
+        h1 {
+            margin:0; font-size:1.5rem; text-transform:uppercase; letter-spacing:2px;
+            background:linear-gradient(90deg,#00f2fe,#4facfe);
+            -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+        }
+        .control-group { display:flex; flex-direction:column; gap:8px; }
+        label { font-size:.9rem; color:#ccc; }
+        input[type="color"] { -webkit-appearance:none; border:none; width:100%; height:40px; border-radius:8px; cursor:pointer; background:none; }
+        input[type="color"]::-webkit-color-swatch-wrapper { padding:0; }
+        input[type="color"]::-webkit-color-swatch { border:none; border-radius:8px; }
+        input[type="range"] { width:100%; cursor:pointer; }
+        select { background:rgba(0,0,0,.5); color:#fff; border:1px solid #555; padding:8px; border-radius:8px; cursor:pointer; font-family:inherit; }
+        select option { color:#000; }
+        .status-box { margin-top:10px; padding:10px; border-radius:8px; background:#222; text-align:center; font-weight:bold; letter-spacing:1px; transition:all .3s; }
+        .instructions { font-size:.8rem; color:#888; line-height:1.4; }
+        .instructions span { color:#fff; font-weight:bold; }
+        #loading { position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); z-index:20; font-size:1.5rem; background:rgba(0,0,0,.8); padding:20px 40px; border-radius:10px; border:1px solid #444; }
+        button { background:#333; color:#fff; border:none; padding:10px; border-radius:8px; cursor:pointer; font-weight:bold; transition:background .2s; }
+        button:hover { background:#444; }
+
+        #settingsBtn { position:absolute; top:20px; right:20px; z-index:100; background:linear-gradient(90deg,#00f2fe,#4facfe); color:#000; font-size:1.1rem; padding:12px 20px; box-shadow:0 0 15px rgba(0,242,254,.5); }
+        #settingsBtn:hover { box-shadow:0 0 25px rgba(0,242,254,.8); }
+        #settingsPanel { right:20px; left:auto; top:80px; border:1px solid #00f2fe; box-shadow:0 0 20px rgba(0,242,254,.2); display:none; }
+        #settingsPanel.visible { display:flex; }
+
+        .toggle-row { display:flex; align-items:center; justify-content:space-between; gap:20px; padding:8px 0; border-bottom:1px solid #333; }
+        .toggle-row:last-child { border-bottom:none; }
+        .switch { position:relative; display:inline-block; width:44px; height:24px; }
+        .switch input { opacity:0; width:0; height:0; }
+        .slider { position:absolute; cursor:pointer; top:0; left:0; right:0; bottom:0; background:#444; transition:.3s; border-radius:24px; }
+        .slider:before { position:absolute; content:""; height:18px; width:18px; left:3px; bottom:3px; background:#fff; transition:.3s; border-radius:50%; }
+        input:checked + .slider { background:#00f2fe; }
+        input:checked + .slider:before { transform:translateX(20px); }
+
+        /* ── Splash Screen ─────────────────────────────────────────────────── */
+        #splashScreen {
+            position:fixed; inset:0; z-index:200;
+            background:rgba(0,0,0,.95); backdrop-filter:blur(10px);
+            display:flex; align-items:center; justify-content:center;
+        }
+        #splashBox {
+            background:rgba(15,15,15,.9); border:1px solid #00f2fe;
+            box-shadow:0 0 40px rgba(0,242,254,.3); border-radius:20px;
+            padding:40px 36px; display:flex; flex-direction:column;
+            gap:18px; max-width:440px; width:90%; text-align:center;
+        }
+        #splashTitle {
+            margin:0; font-size:2.4rem; text-transform:uppercase; letter-spacing:3px;
+            background:linear-gradient(90deg,#00f2fe,#4facfe);
+            -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+        }
+        #splashSubtitle { margin:0; color:#888; font-size:.8rem; letter-spacing:1px; text-align:right; align-self:flex-end; }
+        #splashBtns { display:flex; justify-content:center; }
+        #splashStartBtn {
+            background:linear-gradient(90deg,#00f2fe,#4facfe); color:#000;
+            font-size:1rem; padding:12px 24px; font-weight:bold;
+            box-shadow:0 0 18px rgba(0,242,254,.5); border-radius:8px;
+        }
+        #splashStartBtn:hover { box-shadow:0 0 28px rgba(0,242,254,.8); }
+
+        /* ── Update Popup ───────────────────────────────────────────────────── */
+        #updatePopup {
+            position:fixed; inset:0; z-index:300;
+            background:rgba(0,0,0,.75); backdrop-filter:blur(6px);
+            display:none; align-items:center; justify-content:center;
+        }
+        #updatePopup.visible { display:flex; }
+        #updatePopupBox {
+            background:rgba(15,15,15,.97); border:1px solid #00f2fe;
+            box-shadow:0 0 50px rgba(0,242,254,.4); border-radius:20px;
+            padding:36px 32px; display:flex; flex-direction:column;
+            gap:16px; max-width:380px; width:90%; text-align:center;
+        }
+        #updatePopupTitle {
+            margin:0; font-size:1.5rem; font-weight:bold;
+            background:linear-gradient(90deg,#00f2fe,#4facfe);
+            -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+        }
+        #updatePopupVersion { color:#ccc; font-size:.95rem; }
+        #updateDownloadBtn {
+            background:linear-gradient(90deg,#00f2fe,#4facfe); color:#000;
+            font-size:1rem; padding:12px; font-weight:bold;
+            box-shadow:0 0 18px rgba(0,242,254,.5); border-radius:8px;
+        }
+        #updateDownloadBtn:hover { box-shadow:0 0 28px rgba(0,242,254,.8); }
+        #updateDismissBtn {
+            background:none; color:#555; border:none;
+            font-size:.85rem; cursor:pointer; padding:4px;
+        }
+        #updateDismissBtn:hover { color:#888; background:none; }
+    </style>
+</head>
+<body>
+
+<!-- ── Update Popup ───────────────────────────────────────────────────────── -->
+<div id="updatePopup">
+    <div id="updatePopupBox">
+        <div id="updatePopupTitle">🆕 Update Available!</div>
+        <div id="updatePopupVersion"></div>
+        <button id="updateDownloadBtn">⬇ Download Now</button>
+        <button id="updateDismissBtn">Remind me later</button>
+    </div>
+</div>
+
+<!-- ── Splash Screen ──────────────────────────────────────────────────────── -->
+<div id="splashScreen">
+    <div id="splashBox">
+        <h1 id="splashTitle">AirDraw</h1>
+        <div id="splashBtns">
+            <button id="splashStartBtn">▶ Start</button>
+        </div>
+        <p id="splashSubtitle">Made by Z</p>
+    </div>
+</div>
+
+<div id="loading">Loading Camera &amp; AI Models...</div>
+<button id="settingsBtn">🚀 INSANE FEATURES</button>
+
+<div id="settingsPanel" class="ui-panel">
+    <h2 style="margin:0;color:#00f2fe;font-size:1.2rem;">Feature Toggles</h2>
+    <div class="toggle-row">
+        <label><strong>Rainbow Marker</strong><br><span style="font-size:.7rem;color:#888;">Colors cycle as you draw</span></label>
+        <label class="switch"><input type="checkbox" id="toggleRainbow"><span class="slider"></span></label>
+    </div>
+    <div class="toggle-row">
+        <label><strong>3D Depth Drawing</strong><br><span style="font-size:.7rem;color:#888;">Moving hand closer draws thicker lines</span></label>
+        <label class="switch"><input type="checkbox" id="toggleDepth"><span class="slider"></span></label>
+    </div>
+    <div class="toggle-row">
+        <label><strong>Tony Stark Palette</strong><br><span style="font-size:.7rem;color:#888;">Hold up left hand to see floating colors</span></label>
+        <label class="switch"><input type="checkbox" id="togglePalette"><span class="slider"></span></label>
+    </div>
+    <div class="toggle-row">
+        <label><strong>Gravity Ink</strong><br><span style="font-size:.7rem;color:#888;">Drawings drip down the screen</span></label>
+        <label class="switch"><input type="checkbox" id="toggleGravity"><span class="slider"></span></label>
+    </div>
+    <div class="toggle-row">
+        <label><strong>Force Push Shatter</strong><br><span style="font-size:.7rem;color:#888;">Thrust open palm fast to shatter drawing</span></label>
+        <label class="switch"><input type="checkbox" id="toggleForcePush"><span class="slider"></span></label>
+    </div>
+    <div class="toggle-row">
+        <label><strong>Dual Hand Drawing</strong><br><span style="font-size:.7rem;color:#888;">Both hands draw at the same time</span></label>
+        <label class="switch"><input type="checkbox" id="toggleDualHand"><span class="slider"></span></label>
+    </div>
+    <div class="toggle-row">
+        <label><strong>Face Paint</strong><br><span style="font-size:.7rem;color:#888;">Draw on your face — strokes track your head</span></label>
+        <label class="switch"><input type="checkbox" id="toggleFacePaint"><span class="slider"></span></label>
+    </div>
+    <div class="toggle-row" id="faceGuideRow" style="padding-left:18px;border-left:2px solid rgba(0,242,254,.25);margin-left:6px;display:none;">
+        <label><strong style="font-size:.85rem;">Show Face Guide</strong><br><span style="font-size:.65rem;color:#888;">Outline your face so you know where to draw</span></label>
+        <label class="switch"><input type="checkbox" id="toggleFaceGuide" checked><span class="slider"></span></label>
+    </div>
+    <div class="toggle-row">
+        <label><strong>Mouse Drawing</strong><br><span style="font-size:.7rem;color:#888;">Draw on screen with your mouse</span></label>
+        <label class="switch"><input type="checkbox" id="toggleMouse"><span class="slider"></span></label>
+    </div>
+    <div class="toggle-row">
+        <label><strong>Mouse Eraser</strong><br><span style="font-size:.7rem;color:#888;">Mouse drag erases instead of draws</span></label>
+        <label class="switch"><input type="checkbox" id="toggleMouseErase"><span class="slider"></span></label>
+    </div>
+</div>
+
+
+<div class="ui-panel">
+    <h1>Air Draw</h1>
+    <div class="control-group">
+        <label for="bgMode">Background</label>
+        <select id="bgMode">
+            <option value="camera">Live Camera</option>
+            <option value="black">Solid Black</option>
+            <option value="white">Solid White</option>
+        </select>
+    </div>
+    <div class="control-group">
+        <label for="colorPicker">Neon Color</label>
+        <input type="color" id="colorPicker" value="#00ffff">
+    </div>
+    <div class="control-group">
+        <label for="thicknessSlider">Brush Thickness</label>
+        <input type="range" id="thicknessSlider" min="2" max="30" value="8">
+    </div>
+    <div class="control-group">
+        <label for="glowSlider">Glow Intensity</label>
+        <input type="range" id="glowSlider" min="0" max="40" value="15">
+    </div>
+    <div class="control-group">
+        <label for="opacitySlider">Stroke Opacity</label>
+        <input type="range" id="opacitySlider" min="10" max="100" value="100">
+    </div>
+    <div class="status-box" id="statusBox">WAITING...</div>
+    <button id="clearBtn">Clear Canvas</button>
+    <button id="pauseBtn">⏸ Pause Drawing</button>
+    <div class="instructions">
+        • <span>1 Finger</span>: Draw<br>
+        • <span>Thumb Up</span>: Drag Shape<br>
+        • <span>2 Fingers</span>: Erase<br>
+        • <span>Closed Fist</span>: Pause<br>
+        • <span>Space</span>: Hold to Pause
+    </div>
+</div>
+
+<video id="videoElement" style="display:none;" playsinline autoplay></video>
+<canvas id="videoCanvas"></canvas>
+<canvas id="drawCanvas"></canvas>
+<canvas id="cursorCanvas"></canvas>
+
+<script>
+// ── Version & Update ──────────────────────────────────────────────────────────
+const APP_VERSION = 'AirDrawV1';
+const VERSION_JS  = 'https://raw.githubusercontent.com/SunnyHackerFBI/AirDraw/main/version.js';
+const REPO_ZIP    = 'https://github.com/SunnyHackerFBI/AirDraw/archive/refs/heads/main.zip';
+
+function autoCheckForUpdate() {
+    const old = document.getElementById('__vcheck');
+    if (old) old.remove();
+    delete window.__airdrawLatest;
+    const s = document.createElement('script');
+    s.id  = '__vcheck';
+    s.src = VERSION_JS + '?t=' + Date.now();
+    s.onload = () => {
+        const latest = window.__airdrawLatest || APP_VERSION;
+        const cur = parseInt(APP_VERSION.match(/V(\d+)/i)?.[1] ?? '0', 10);
+        const rem = parseInt(latest.match(/V(\d+)/i)?.[1] ?? '0', 10);
+        if (rem > cur) showUpdatePopup(latest);
+    };
+    document.head.appendChild(s);
+}
+
+function showUpdatePopup(latest) {
+    const popup = document.getElementById('updatePopup');
+    document.getElementById('updatePopupVersion').textContent =
+        `A new version is out: ${latest}`;
+    document.getElementById('updateDownloadBtn').onclick = () => window.open(REPO_ZIP);
+    document.getElementById('updateDismissBtn').onclick  = () => popup.classList.remove('visible');
+    popup.classList.add('visible');
+}
+
+autoCheckForUpdate();
+
+// ── Splash Screen ─────────────────────────────────────────────────────────────
+document.getElementById('splashStartBtn').addEventListener('click', () => {
+    document.getElementById('splashScreen').style.display = 'none';
+});
+
+// ── DOM ───────────────────────────────────────────────────────────────────────
+const videoElement    = document.getElementById('videoElement');
+const videoCanvas     = document.getElementById('videoCanvas');
+const videoCtx        = videoCanvas.getContext('2d');
+const drawCanvas      = document.getElementById('drawCanvas');
+const drawCtx         = drawCanvas.getContext('2d');
+const cursorCanvas    = document.getElementById('cursorCanvas');
+const cursorCtx       = cursorCanvas.getContext('2d');
+const bgModeSelect    = document.getElementById('bgMode');
+const colorPicker     = document.getElementById('colorPicker');
+const thicknessSlider = document.getElementById('thicknessSlider');
+const statusBox       = document.getElementById('statusBox');
+const loadingDiv      = document.getElementById('loading');
+const clearBtn        = document.getElementById('clearBtn');
+const settingsBtn     = document.getElementById('settingsBtn');
+const settingsPanel   = document.getElementById('settingsPanel');
+const toggleRainbow   = document.getElementById('toggleRainbow');
+const toggleDepth     = document.getElementById('toggleDepth');
+const togglePalette   = document.getElementById('togglePalette');
+const toggleGravity   = document.getElementById('toggleGravity');
+const toggleForcePush = document.getElementById('toggleForcePush');
+const toggleDualHand  = document.getElementById('toggleDualHand');
+const toggleFacePaint = document.getElementById('toggleFacePaint');
+const toggleFaceGuide = document.getElementById('toggleFaceGuide');
+const faceGuideRow    = document.getElementById('faceGuideRow');
+const toggleMouse      = document.getElementById('toggleMouse');
+const toggleMouseErase = document.getElementById('toggleMouseErase');
+const pauseBtn         = document.getElementById('pauseBtn');
+const glowSlider      = document.getElementById('glowSlider');
+const opacitySlider   = document.getElementById('opacitySlider');
+
+// Read current slider values at paint time so changes apply to new strokes immediately
+const glow        = () => parseInt(glowSlider.value);
+const strokeAlpha = () => parseInt(opacitySlider.value) / 100;
+
+settingsBtn.addEventListener('click', () => settingsPanel.classList.toggle('visible'));
+colorPicker.addEventListener('input', e => { e.target.style.boxShadow = `0 0 15px ${e.target.value}`; });
+colorPicker.style.boxShadow = `0 0 15px ${colorPicker.value}`;
+
+toggleFacePaint.addEventListener('change', () => {
+    faceGuideRow.style.display = toggleFacePaint.checked ? '' : 'none';
+    if (toggleFacePaint.checked) toggleFaceGuide.checked = true;
+    if (!toggleFacePaint.checked) currentFaceLandmarks = null;
+});
+
+// Face mesh landmark index sequences for drawing a guide overlay
+const FACE_OVAL = [10,338,297,332,284,251,389,356,454,323,361,288,397,365,379,378,400,377,152,148,176,149,150,136,172,58,132,93,234,127,162,21,54,103,67,109,10];
+const FACE_LEFT_EYE  = [33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246,33];
+const FACE_RIGHT_EYE = [362,382,381,380,374,373,390,249,263,466,388,387,386,385,384,398,362];
+const FACE_LIPS      = [61,146,91,181,84,17,314,405,321,375,291,409,270,269,267,0,37,39,40,185,61];
+
+function drawFaceContour(lm, indices, w, h) {
+    cursorCtx.beginPath();
+    const s = lm[indices[0]];
+    cursorCtx.moveTo(s.x * w, s.y * h);
+    for (let i = 1; i < indices.length; i++) {
+        const p = lm[indices[i]];
+        cursorCtx.lineTo(p.x * w, p.y * h);
+    }
+    cursorCtx.stroke();
+}
+
+function drawFaceGuide(lm, w, h) {
+    cursorCtx.save();
+    cursorCtx.strokeStyle = 'rgba(0,242,254,0.55)';
+    cursorCtx.lineWidth = 1.2;
+    cursorCtx.shadowColor = 'rgba(0,242,254,0.4)';
+    cursorCtx.shadowBlur = 6;
+    drawFaceContour(lm, FACE_OVAL, w, h);
+    drawFaceContour(lm, FACE_LEFT_EYE, w, h);
+    drawFaceContour(lm, FACE_RIGHT_EYE, w, h);
+    drawFaceContour(lm, FACE_LIPS, w, h);
+    cursorCtx.shadowBlur = 0;
+    cursorCtx.restore();
+}
+
+// ── Offscreen accumulation canvas ────────────────────────────────────────────
+// THE KEY PERFORMANCE FIX:
+// Instead of re-rendering all stroke points every frame, each new point is
+// painted onto this canvas ONCE when it's added. The render loop then just
+// does a single drawImage blit — O(1) regardless of how much has been drawn.
+// This eliminates rainbow marker lag completely.
+const offCtx = (() => {
+    const c = document.createElement('canvas');
+    return c.getContext('2d');
+})();
+const offCanvas = offCtx.canvas;
+
+let needsRebuild = false; // full redraw of offCanvas from strokes[] (erase/drag/clear)
+let needsBlit    = true;  // whether to blit offCanvas to drawCtx this frame
+
+// ── Canvas resize ─────────────────────────────────────────────────────────────
+function resizeCanvases() {
+    const w = window.innerWidth, h = window.innerHeight;
+    videoCanvas.width  = drawCanvas.width  = cursorCanvas.width  = offCanvas.width  = w;
+    videoCanvas.height = drawCanvas.height = cursorCanvas.height = offCanvas.height = h;
+    needsRebuild = true;
+    needsBlit    = true;
+}
+window.addEventListener('resize', resizeCanvases);
+resizeCanvases();
+
+// ── Engine state ──────────────────────────────────────────────────────────────
+let strokes        = [];
+let particles      = [];
+let rainbowHue     = 0;
+let isModelsLoaded = false;
+
+// Per-hand state — each hand independently tracks its own active stroke
+let handState1 = { currentStroke: null, currentFaceStroke: null, lastMode: 'none', lastPalmX: null, lastPalmY: null };
+let handState2 = { currentStroke: null, currentFaceStroke: null, lastMode: 'none', lastPalmX: null, lastPalmY: null };
+let prevHandCount = 0;
+
+// Face tracking state
+let currentFaceLandmarks = null;
+let faceStrokes = [];
+
+// Drag (shared; only one hand drags at a time)
+let draggedStroke  = null;
+let dragStartX     = 0, dragStartY = 0;
+let initialOffsetX = 0, initialOffsetY = 0;
+
+const PALETTE_COLORS = ['#ffffff','#ff0055','#00ff00','#ffff00','#0055ff'];
+
+// ── UI listeners ──────────────────────────────────────────────────────────────
+let drawingPaused   = false; // toggled by button
+let spaceHeld       = false; // held by spacebar
+let mouseDrawing    = false;
+let mouseStroke     = null;
+let mouseFaceStroke = null;
+let mousePos        = null; // current canvas-space cursor position for preview
+
+function setPauseState(paused) {
+    drawingPaused = paused;
+    pauseBtn.textContent = drawingPaused ? '▶ Resume Drawing' : '⏸ Pause Drawing';
+    pauseBtn.style.background = drawingPaused ? 'linear-gradient(90deg,#ff4444,#ff8844)' : '#333';
+    if (drawingPaused) { releaseHandState(handState1); releaseHandState(handState2); }
+}
+
+clearBtn.addEventListener('click', () => {
+    strokes = []; particles = []; faceStrokes = [];
+    offCtx.clearRect(0, 0, offCanvas.width, offCanvas.height);
+    needsBlit = true;
+});
+
+pauseBtn.addEventListener('click', () => setPauseState(!drawingPaused));
+
+document.addEventListener('keydown', e => {
+    if (e.code === 'Space' && !e.repeat) {
+        e.preventDefault();
+        spaceHeld = true;
+        releaseHandState(handState1); releaseHandState(handState2);
+    }
+});
+document.addEventListener('keyup', e => {
+    if (e.code === 'Space') spaceHeld = false;
+});
+
+toggleMouse.addEventListener('change', () => {
+    cursorCanvas.style.pointerEvents = (toggleMouse.checked || toggleMouseErase.checked) ? 'auto' : 'none';
+});
+toggleMouseErase.addEventListener('change', () => {
+    cursorCanvas.style.pointerEvents = (toggleMouse.checked || toggleMouseErase.checked) ? 'auto' : 'none';
+});
+
+function getMouseCanvasPos(e) {
+    const rect = cursorCanvas.getBoundingClientRect();
+    const sx = (e.clientX - rect.left) / rect.width;
+    const sy = (e.clientY - rect.top)  / rect.height;
+    return { x: (1 - sx) * cursorCanvas.width, y: sy * cursorCanvas.height };
+}
+
+cursorCanvas.addEventListener('mousedown', e => {
+    if ((!toggleMouse.checked && !toggleMouseErase.checked) || drawingPaused || spaceHeld) return;
+    mouseDrawing = true;
+    const { x, y } = getMouseCanvasPos(e);
+    const color = colorPicker.value;
+    const thick = parseInt(thicknessSlider.value);
+    if (toggleMouseErase.checked) return; // erase handled on mousemove
+
+    const onFace = toggleFacePaint.checked && currentFaceLandmarks &&
+                   isOnFace(x, y, currentFaceLandmarks, drawCanvas.width, drawCanvas.height);
+    if (onFace) {
+        const ft = getFaceTransform(currentFaceLandmarks, drawCanvas.width, drawCanvas.height);
+        const { fx, fy } = toFaceCoords(x, y, ft);
+        mouseFaceStroke = { color, thickness: thick, points: [{ fx, fy, t: thick, c: color }], isDynamic: false };
+        faceStrokes.push(mouseFaceStroke);
+        mouseStroke = null;
+    } else {
+        mouseStroke = { color, thickness: thick, points: [], offsetX: 0, offsetY: 0, isDynamic: false };
+        strokes.push(mouseStroke);
+        paintDot(x, y, color, thick);
+        mouseStroke.points.push({ x, y, t: thick, c: color });
+    }
+    needsBlit = true;
+});
+
+cursorCanvas.addEventListener('mousemove', e => {
+    if (!toggleMouse.checked && !toggleMouseErase.checked) return;
+    mousePos = getMouseCanvasPos(e);
+    if (!mouseDrawing) return;
+    const { x, y } = mousePos;
+    const color = colorPicker.value;
+    const thick = parseInt(thicknessSlider.value);
+
+    if (toggleMouseErase.checked) {
+        const er = thick * 2;
+        const next = [];
+        for (const s of strokes) {
+            let seg = [];
+            for (const p of s.points) {
+                if (Math.hypot(p.x + s.offsetX - x, p.y + s.offsetY - y) > er) {
+                    seg.push(p);
+                } else if (seg.length) { next.push({ ...s, points: seg }); seg = []; }
+            }
+            if (seg.length) next.push({ ...s, points: seg });
+        }
+        strokes = next;
+        needsRebuild = true; needsBlit = true;
+        return;
+    }
+
+    if (mouseFaceStroke && currentFaceLandmarks) {
+        const ft  = getFaceTransform(currentFaceLandmarks, drawCanvas.width, drawCanvas.height);
+        const pts = mouseFaceStroke.points;
+        if (pts.length > 0) {
+            const lastCanvas = fromFaceCoords(pts[pts.length - 1].fx, pts[pts.length - 1].fy, ft);
+            const d = Math.hypot(x - lastCanvas.x, y - lastCanvas.y);
+            const steps = Math.max(1, Math.ceil(d / 5));
+            for (let i = 1; i <= steps; i++) {
+                const px = lastCanvas.x + (x - lastCanvas.x) * (i / steps);
+                const py = lastCanvas.y + (y - lastCanvas.y) * (i / steps);
+                const { fx, fy } = toFaceCoords(px, py, ft);
+                pts.push({ fx, fy, t: thick, c: color });
+            }
+        }
+        needsBlit = true;
+    } else if (mouseStroke) {
+        const pts = mouseStroke.points;
+        if (pts.length > 0) {
+            const last  = pts[pts.length - 1];
+            const d     = Math.hypot(x - last.x, y - last.y);
+            const steps = Math.max(1, Math.ceil(d / 5));
+            for (let i = 1; i <= steps; i++) {
+                const px = last.x + (x - last.x) * (i / steps);
+                const py = last.y + (y - last.y) * (i / steps);
+                paintSegment(last.x, last.y, px, py, color, thick);
+                pts.push({ x: px, y: py, t: thick, c: color });
+            }
+            needsBlit = true;
+        }
+    }
+});
+
+cursorCanvas.addEventListener('mouseup',    () => { mouseDrawing = false; mouseStroke = null; mouseFaceStroke = null; });
+cursorCanvas.addEventListener('mouseleave', () => { mouseDrawing = false; mouseStroke = null; mouseFaceStroke = null; mousePos = null; });
+
+// ── Utilities ─────────────────────────────────────────────────────────────────
+function updateStatus(mode, color) {
+    statusBox.innerText = mode.toUpperCase();
+    statusBox.style.color = color;
+    statusBox.style.boxShadow = `0 0 10px ${color}40`;
+    statusBox.style.border = `1px solid ${color}`;
+}
+
+function findStrokeAt(px, py) {
+    for (let i = strokes.length - 1; i >= 0; i--) {
+        const s = strokes[i];
+        for (const p of s.points) {
+            if (Math.hypot(p.x + s.offsetX - px, p.y + s.offsetY - py) < (p.t || s.thickness) + 20)
+                return s;
+        }
+    }
+    return null;
+}
+
+function shatterStrokes(palmX, palmY) {
+    if (!strokes.length && !faceStrokes.length) return;
+    for (const s of strokes) {
+        for (let i = 0; i < s.points.length; i += 2) {
+            const pt = s.points[i];
+            const ax = pt.x + s.offsetX, ay = pt.y + s.offsetY;
+            const dx = ax - palmX, dy = ay - palmY;
+            const dist = Math.hypot(dx, dy) || 1;
+            particles.push({ x: ax, y: ay,
+                vx: (dx/dist)*(Math.random()*20+10), vy: (dy/dist)*(Math.random()*20+10),
+                life: 1, color: pt.c || s.color, size: (pt.t || s.thickness)/2 });
+        }
+    }
+    // Include face strokes in the particle burst (use live face transform for positions)
+    if (faceStrokes.length && currentFaceLandmarks) {
+        const ft = getFaceTransform(currentFaceLandmarks, drawCanvas.width, drawCanvas.height);
+        for (const s of faceStrokes) {
+            for (let i = 0; i < s.points.length; i += 2) {
+                const pt = s.points[i];
+                const { x: ax, y: ay } = fromFaceCoords(pt.fx, pt.fy, ft);
+                const dx = ax - palmX, dy = ay - palmY;
+                const dist = Math.hypot(dx, dy) || 1;
+                particles.push({ x: ax, y: ay,
+                    vx: (dx/dist)*(Math.random()*20+10), vy: (dy/dist)*(Math.random()*20+10),
+                    life: 1, color: pt.c || s.color, size: (pt.t || s.thickness)/2 });
+            }
+        }
+    }
+    strokes = []; faceStrokes = [];
+    offCtx.clearRect(0, 0, offCanvas.width, offCanvas.height);
+    needsBlit = true;
+}
+
+// Renders one stroke to any 2d context (used only for full rebuilds)
+function renderStrokeTo(ctx, s) {
+    if (!s.points.length) return;
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    if (!s.isDynamic) {
+        ctx.globalAlpha = strokeAlpha();
+        ctx.strokeStyle = s.color; ctx.shadowColor = s.color;
+        ctx.shadowBlur = glow(); ctx.lineWidth = s.thickness;
+        ctx.beginPath();
+        ctx.moveTo(s.points[0].x + s.offsetX, s.points[0].y + s.offsetY);
+        for (let i = 1; i < s.points.length; i++)
+            ctx.lineTo(s.points[i].x + s.offsetX, s.points[i].y + s.offsetY);
+        ctx.stroke();
+        if (s.points.length === 1) {
+            ctx.beginPath();
+            ctx.arc(s.points[0].x + s.offsetX, s.points[0].y + s.offsetY, s.thickness/2, 0, Math.PI*2);
+            ctx.fillStyle = s.color; ctx.fill();
+        }
+        ctx.globalAlpha = 1;
+    } else {
+        for (let i = 1; i < s.points.length; i++) {
+            const p0 = s.points[i-1], p1 = s.points[i];
+            ctx.globalAlpha = strokeAlpha();
+            ctx.strokeStyle = p1.c || s.color; ctx.shadowColor = p1.c || s.color;
+            ctx.shadowBlur = glow(); ctx.lineWidth = p1.t || s.thickness;
+            ctx.beginPath();
+            ctx.moveTo(p0.x + s.offsetX, p0.y + s.offsetY);
+            ctx.lineTo(p1.x + s.offsetX, p1.y + s.offsetY);
+            ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        if (s.points.length === 1) {
+            const p0 = s.points[0];
+            ctx.globalAlpha = strokeAlpha();
+            ctx.beginPath();
+            ctx.arc(p0.x + s.offsetX, p0.y + s.offsetY, (p0.t||s.thickness)/2, 0, Math.PI*2);
+            ctx.fillStyle = p0.c||s.color; ctx.shadowColor = p0.c||s.color;
+            ctx.shadowBlur = glow(); ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+    }
+}
+
+// Paint a single new segment directly onto the offscreen canvas.
+// This is the core of the performance fix — each segment is painted once,
+// never re-drawn on subsequent frames.
+function paintSegment(x0, y0, x1, y1, color, thickness) {
+    offCtx.globalAlpha = strokeAlpha();
+    offCtx.lineCap = 'round'; offCtx.lineJoin = 'round';
+    offCtx.strokeStyle = color; offCtx.shadowColor = color;
+    offCtx.shadowBlur  = glow(); offCtx.lineWidth   = thickness;
+    offCtx.beginPath();
+    offCtx.moveTo(x0, y0);
+    offCtx.lineTo(x1, y1);
+    offCtx.stroke();
+    offCtx.shadowBlur  = 0;
+    offCtx.globalAlpha = 1;
+}
+
+function paintDot(x, y, color, thickness) {
+    offCtx.globalAlpha = strokeAlpha();
+    offCtx.beginPath();
+    offCtx.arc(x, y, thickness/2, 0, Math.PI*2);
+    offCtx.fillStyle   = color; offCtx.shadowColor = color;
+    offCtx.shadowBlur  = glow();
+    offCtx.fill();
+    offCtx.shadowBlur  = 0;
+    offCtx.globalAlpha = 1;
+}
+
+// ── Render Loop ───────────────────────────────────────────────────────────────
+function renderLoop() {
+    const gravity   = toggleGravity.checked;
+    const hasParticles = particles.length > 0;
+
+    if (!needsBlit && !needsRebuild && !gravity && !hasParticles) {
+        requestAnimationFrame(renderLoop);
+        return;
+    }
+
+    if (gravity) {
+        // Gravity mutates point positions each frame — must fully rebuild
+        for (const s of strokes) for (const p of s.points) p.y += 1.5;
+        offCtx.clearRect(0, 0, offCanvas.width, offCanvas.height);
+        for (const s of strokes) renderStrokeTo(offCtx, s);
+        needsRebuild = false;
+    } else if (needsRebuild) {
+        offCtx.clearRect(0, 0, offCanvas.width, offCanvas.height);
+        for (const s of strokes) renderStrokeTo(offCtx, s);
+        needsRebuild = false;
+    }
+
+    // Blit the accumulated offscreen canvas — this is O(1) no matter what's drawn
+    drawCtx.clearRect(0, 0, drawCanvas.width, drawCanvas.height);
+    drawCtx.drawImage(offCanvas, 0, 0);
+    needsBlit = false;
+
+    // Render face-attached strokes (re-rendered every frame — face position changes)
+    if (faceStrokes.length > 0 && currentFaceLandmarks) {
+        const ft = getFaceTransform(currentFaceLandmarks, drawCanvas.width, drawCanvas.height);
+        for (const s of faceStrokes) renderFaceStroke(drawCtx, s, ft);
+        needsBlit = true;
+    }
+
+    // Particle system (Force Push)
+    if (hasParticles) {
+        drawCtx.shadowBlur = 10;
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.x += p.vx; p.y += p.vy; p.vy += 0.5; p.life -= 0.02;
+            if (p.life <= 0) { particles.splice(i, 1); continue; }
+            drawCtx.globalAlpha = p.life;
+            drawCtx.fillStyle   = p.color;
+            drawCtx.shadowColor = p.color;
+            drawCtx.beginPath();
+            drawCtx.arc(p.x, p.y, p.size, 0, Math.PI*2);
+            drawCtx.fill();
+        }
+        drawCtx.globalAlpha = 1;
+        drawCtx.shadowBlur  = 0;
+        needsBlit = true; // particles still animating
+    }
+
+    requestAnimationFrame(renderLoop);
+}
+requestAnimationFrame(renderLoop);
+
+// ── Face coordinate helpers ───────────────────────────────────────────────────
+function getFaceTransform(lm, w, h) {
+    const lx = lm[33].x * w,  ly = lm[33].y * h;
+    const rx = lm[263].x * w, ry = lm[263].y * h;
+    return {
+        cx: (lx + rx) / 2,
+        cy: (ly + ry) / 2,
+        scale: Math.hypot(rx - lx, ry - ly),
+        angle: Math.atan2(ry - ly, rx - lx)
+    };
+}
+
+function isOnFace(px, py, lm, w, h) {
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const l of lm) {
+        if (l.x * w < minX) minX = l.x * w;
+        if (l.x * w > maxX) maxX = l.x * w;
+        if (l.y * h < minY) minY = l.y * h;
+        if (l.y * h > maxY) maxY = l.y * h;
+    }
+    const padX = (maxX - minX) * 0.15, padY = (maxY - minY) * 0.15;
+    return px >= minX - padX && px <= maxX + padX &&
+           py >= minY - padY && py <= maxY + padY;
+}
+
+function toFaceCoords(px, py, t) {
+    const dx = px - t.cx, dy = py - t.cy;
+    const c = Math.cos(-t.angle), s = Math.sin(-t.angle);
+    return { fx: (dx*c - dy*s) / t.scale, fy: (dx*s + dy*c) / t.scale };
+}
+
+function fromFaceCoords(fx, fy, t) {
+    const c = Math.cos(t.angle), s = Math.sin(t.angle);
+    return {
+        x: t.cx + (fx*c - fy*s) * t.scale,
+        y: t.cy + (fx*s + fy*c) * t.scale
+    };
+}
+
+// ── Face stroke renderer ──────────────────────────────────────────────────────
+function renderFaceStroke(ctx, s, t) {
+    if (!s.points.length) return;
+    const pts = s.points.map(p => ({ ...p, ...fromFaceCoords(p.fx, p.fy, t) }));
+    ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    if (!s.isDynamic) {
+        ctx.globalAlpha = strokeAlpha();
+        ctx.strokeStyle = s.color; ctx.shadowColor = s.color;
+        ctx.shadowBlur = glow(); ctx.lineWidth = s.thickness;
+        ctx.beginPath();
+        ctx.moveTo(pts[0].x, pts[0].y);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+    } else {
+        for (let i = 1; i < pts.length; i++) {
+            const p1 = pts[i];
+            ctx.globalAlpha = strokeAlpha();
+            ctx.strokeStyle = p1.c || s.color; ctx.shadowColor = p1.c || s.color;
+            ctx.shadowBlur = glow(); ctx.lineWidth = p1.t || s.thickness;
+            ctx.beginPath(); ctx.moveTo(pts[i-1].x, pts[i-1].y);
+            ctx.lineTo(p1.x, p1.y); ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+    }
+    ctx.shadowBlur = 0;
+}
+
+// ── Hand Drawing Logic ────────────────────────────────────────────────────────
+function processDrawHand(hand, state) {
+    drawConnectors(cursorCtx, hand, HAND_CONNECTIONS, { color:'rgba(255,255,255,.2)', lineWidth:2 });
+    drawLandmarks(cursorCtx, hand, { color:'rgba(255,255,255,.5)', lineWidth:1, radius:2 });
+
+    const idxTip  = hand[8], thumbTip = hand[4];
+    const x = idxTip.x * drawCanvas.width,  y = idxTip.y * drawCanvas.height;
+    const thumbX = thumbTip.x * drawCanvas.width, thumbY = thumbTip.y * drawCanvas.height;
+
+    const ext = (tip, pip) => hand[tip].y < hand[pip].y;
+    const iExt = ext(8,6), mExt = ext(12,10), rExt = ext(16,14), pExt = ext(20,18);
+    // Thumb up: thumb tip above thumb IP joint while all four fingers are closed
+    const thumbExt = hand[4].y < hand[3].y;
+    const openPalm = iExt && mExt && rExt && pExt;
+
+    const palmX = hand[0].x * drawCanvas.width;
+    const palmY = hand[0].y * drawCanvas.height;
+    let palmVel = 0;
+    if (state.lastPalmX !== null) palmVel = Math.hypot(palmX-state.lastPalmX, palmY-state.lastPalmY);
+    state.lastPalmX = palmX; state.lastPalmY = palmY;
+
+    if (drawingPaused || spaceHeld) {
+        if (state.lastMode === 'draw') { state.currentStroke = null; state.currentFaceStroke = null; }
+        state.lastMode = 'none';
+        updateStatus('PAUSED ⏸', '#ff8844');
+        return;
+    }
+
+    let mode = 'none';
+    if      (toggleForcePush.checked && openPalm && palmVel > 60)  mode = 'force_push';
+    else if (thumbExt && !iExt && !mExt && !rExt && !pExt)         mode = 'drag';
+    else if (iExt && !mExt && !rExt && !pExt)                      mode = 'draw';
+    else if (iExt &&  mExt && !rExt && !pExt)                      mode = 'erase';
+    else if (!iExt && !mExt && !rExt && !pExt)                     mode = 'pause';
+
+    const baseThick = parseInt(thicknessSlider.value);
+    let thick = baseThick;
+    const color = colorPicker.value;
+
+    if (toggleDepth.checked) {
+        const sz = Math.hypot(hand[0].x-hand[9].x, hand[0].y-hand[9].y);
+        thick = baseThick * (Math.max(.05, Math.min(.4, sz)) / .15);
+    }
+
+    // Finalize active stroke when hand leaves draw mode
+    if (state.lastMode === 'draw' && mode !== 'draw') {
+        state.currentStroke = null;
+        state.currentFaceStroke = null;
+    }
+
+    // ── Modes ────────────────────────────────────────────────────────────────
+    if (mode === 'force_push') {
+        updateStatus('FORCE PUSH!', '#ffffff');
+        shatterStrokes(palmX, palmY);
+        cursorCtx.beginPath(); cursorCtx.arc(palmX, palmY, 100, 0, Math.PI*2);
+        cursorCtx.strokeStyle = 'rgba(255,255,255,.8)'; cursorCtx.lineWidth = 10; cursorCtx.stroke();
+
+    } else if (mode === 'drag') {
+        if (state.lastMode !== 'drag') {
+            draggedStroke = findStrokeAt(thumbX, thumbY);
+            if (draggedStroke) { dragStartX=thumbX; dragStartY=thumbY; initialOffsetX=draggedStroke.offsetX; initialOffsetY=draggedStroke.offsetY; }
+        }
+        if (draggedStroke) {
+            updateStatus('Dragging Shape', '#ffaa00');
+            draggedStroke.offsetX = initialOffsetX + (thumbX - dragStartX);
+            draggedStroke.offsetY = initialOffsetY + (thumbY - dragStartY);
+            needsRebuild = true; needsBlit = true;
+            cursorCtx.beginPath(); cursorCtx.arc(thumbX, thumbY, 8, 0, Math.PI*2);
+            cursorCtx.fillStyle='#ffaa00'; cursorCtx.shadowColor='#ffaa00'; cursorCtx.shadowBlur=10;
+            cursorCtx.fill(); cursorCtx.shadowBlur=0;
+        } else {
+            updateStatus('Nothing to Drag', '#ffaa00');
+        }
+
+    } else if (mode === 'draw') {
+        updateStatus(
+            toggleRainbow.checked ? 'Drawing (Rainbow)' : 'Drawing',
+            toggleRainbow.checked ? `hsl(${rainbowHue},100%,50%)` : color
+        );
+
+        const onFace = toggleFacePaint.checked && currentFaceLandmarks &&
+                       isOnFace(x, y, currentFaceLandmarks, drawCanvas.width, drawCanvas.height);
+
+        if (state.lastMode !== 'draw') {
+            if (onFace) {
+                // Start a face-relative stroke
+                state.currentFaceStroke = { color, thickness: baseThick, points: [],
+                    isDynamic: toggleDepth.checked || toggleRainbow.checked };
+                faceStrokes.push(state.currentFaceStroke);
+                state.currentStroke = null;
+            } else {
+                // Start a regular stroke
+                state.currentStroke = { color, thickness: baseThick, points: [], offsetX:0, offsetY:0,
+                    isDynamic: toggleDepth.checked || toggleRainbow.checked };
+                strokes.push(state.currentStroke);
+                state.currentFaceStroke = null;
+            }
+        }
+
+        // Determine color for this point
+        let ptColor = color;
+        if (toggleRainbow.checked) {
+            rainbowHue = (rainbowHue + 2) % 360;
+            ptColor = `hsl(${rainbowHue},100%,50%)`;
+        }
+
+        if (state.currentFaceStroke) {
+            // Face stroke: store points in face-relative coordinates
+            const ft = getFaceTransform(currentFaceLandmarks, drawCanvas.width, drawCanvas.height);
+            const pts = state.currentFaceStroke.points;
+            if (pts.length > 0) {
+                const lastPt = pts[pts.length - 1];
+                const lastCanvas = fromFaceCoords(lastPt.fx, lastPt.fy, ft);
+                const d = Math.hypot(x - lastCanvas.x, y - lastCanvas.y);
+                const steps = Math.max(1, Math.ceil(d / 5));
+                for (let i = 1; i <= steps; i++) {
+                    const px = lastCanvas.x + (x - lastCanvas.x) * (i/steps);
+                    const py = lastCanvas.y + (y - lastCanvas.y) * (i/steps);
+                    let stepColor = color;
+                    if (toggleRainbow.checked) {
+                        rainbowHue = (rainbowHue + 2) % 360;
+                        stepColor = `hsl(${rainbowHue},100%,50%)`;
+                    }
+                    const { fx, fy } = toFaceCoords(px, py, ft);
+                    pts.push({ fx, fy, t: thick, c: stepColor });
+                }
+                ptColor = toggleRainbow.checked ? `hsl(${rainbowHue},100%,50%)` : color;
+            } else {
+                const { fx, fy } = toFaceCoords(x, y, ft);
+                pts.push({ fx, fy, t: thick, c: ptColor });
+            }
+            needsBlit = true;
+        } else if (state.currentStroke) {
+            const pts = state.currentStroke.points;
+            if (pts.length > 0) {
+                // Interpolate to fill gaps when hand moves fast
+                const last  = pts[pts.length - 1];
+                const d     = Math.hypot(x - last.x, y - last.y);
+                const steps = Math.max(1, Math.ceil(d / 5));
+                for (let i = 1; i <= steps; i++) {
+                    const px = last.x + (x - last.x) * (i/steps);
+                    const py = last.y + (y - last.y) * (i/steps);
+                    let stepColor = color;
+                    if (toggleRainbow.checked) {
+                        rainbowHue = (rainbowHue + 2) % 360;
+                        stepColor = `hsl(${rainbowHue},100%,50%)`;
+                    }
+                    // Paint segment directly onto offscreen canvas — done once, never re-drawn
+                    paintSegment(last.x, last.y, px, py, stepColor, thick);
+                    pts.push({ x:px, y:py, t:thick, c:stepColor });
+                }
+                ptColor = toggleRainbow.checked ? `hsl(${rainbowHue},100%,50%)` : color;
+            } else {
+                // First point of stroke: paint a dot
+                paintDot(x, y, ptColor, thick);
+                pts.push({ x, y, t:thick, c:ptColor });
+            }
+        }
+
+        // Cursor dot
+        const cursorColor = toggleRainbow.checked ? `hsl(${rainbowHue},100%,50%)` : color;
+        cursorCtx.beginPath(); cursorCtx.arc(x, y, thick/2, 0, Math.PI*2);
+        cursorCtx.fillStyle=cursorColor; cursorCtx.shadowColor=cursorColor; cursorCtx.shadowBlur=glow();
+        cursorCtx.fill(); cursorCtx.shadowBlur=0;
+        needsBlit = true;
+
+    } else if (mode === 'erase') {
+        updateStatus('Erasing', '#ff4444');
+        const er = thick * 2;
+        const next = [];
+        for (const s of strokes) {
+            let seg = [];
+            for (const p of s.points) {
+                if (Math.hypot(p.x+s.offsetX-x, p.y+s.offsetY-y) > er) {
+                    seg.push(p);
+                } else if (seg.length) { next.push({...s, points:seg}); seg=[]; }
+            }
+            if (seg.length) next.push({...s, points:seg});
+        }
+        strokes = next;
+        needsRebuild = true; needsBlit = true;
+        cursorCtx.beginPath(); cursorCtx.arc(x, y, er, 0, Math.PI*2);
+        cursorCtx.fillStyle='rgba(255,68,68,.5)'; cursorCtx.strokeStyle='#ff4444';
+        cursorCtx.lineWidth=2; cursorCtx.fill(); cursorCtx.stroke();
+
+    } else if (mode === 'pause') {
+        updateStatus('Paused','#aaaaaa');
+        cursorCtx.beginPath(); cursorCtx.arc(x,y,5,0,Math.PI*2);
+        cursorCtx.fillStyle='#aaaaaa'; cursorCtx.fill();
+    } else {
+        updateStatus('Tracking...','#555555');
+    }
+
+    state.lastMode = mode;
+}
+
+function releaseHandState(state) {
+    state.currentStroke = null;
+    state.currentFaceStroke = null;
+    state.lastMode = 'none';
+}
+
+// ── MediaPipe Results ─────────────────────────────────────────────────────────
+function onResults(results) {
+    if (!isModelsLoaded) { isModelsLoaded = true; loadingDiv.style.display = 'none'; }
+
+    videoCtx.save();
+    videoCtx.clearRect(0, 0, videoCanvas.width, videoCanvas.height);
+    const bgMode = bgModeSelect.value;
+    if (bgMode === 'camera' && results.image)
+        videoCtx.drawImage(results.image, 0, 0, videoCanvas.width, videoCanvas.height);
+    else if (bgMode === 'black') { videoCtx.fillStyle='#000'; videoCtx.fillRect(0,0,videoCanvas.width,videoCanvas.height); }
+    else if (bgMode === 'white') { videoCtx.fillStyle='#fff'; videoCtx.fillRect(0,0,videoCanvas.width,videoCanvas.height); }
+    videoCtx.restore();
+
+    cursorCtx.clearRect(0, 0, cursorCanvas.width, cursorCanvas.height);
+
+    // Mouse cursor preview
+    if ((toggleMouse.checked || toggleMouseErase.checked) && mousePos) {
+        const thick = parseInt(thicknessSlider.value);
+        if (toggleMouseErase.checked) {
+            const er = thick * 2;
+            cursorCtx.beginPath();
+            cursorCtx.arc(mousePos.x, mousePos.y, er, 0, Math.PI * 2);
+            cursorCtx.fillStyle   = 'rgba(255,68,68,.25)';
+            cursorCtx.strokeStyle = '#ff4444';
+            cursorCtx.shadowColor = '#ff4444';
+            cursorCtx.shadowBlur  = 8;
+            cursorCtx.lineWidth   = 2;
+            cursorCtx.fill();
+            cursorCtx.stroke();
+            cursorCtx.shadowBlur = 0;
+        } else {
+            const color = colorPicker.value;
+            cursorCtx.beginPath();
+            cursorCtx.arc(mousePos.x, mousePos.y, thick / 2, 0, Math.PI * 2);
+            cursorCtx.fillStyle   = color;
+            cursorCtx.shadowColor = color;
+            cursorCtx.shadowBlur  = glow();
+            cursorCtx.fill();
+            cursorCtx.shadowBlur = 0;
+        }
+    }
+
+    let drawHand = null, paletteHand = null;
+
+    const curHandCount = results.multiHandLandmarks?.length || 0;
+    if (curHandCount !== prevHandCount) {
+        releaseHandState(handState1);
+        releaseHandState(handState2);
+        prevHandCount = curHandCount;
+    }
+
+    if (results.multiHandLandmarks?.length > 0) {
+        if (toggleDualHand.checked) {
+            drawHand    = results.multiHandLandmarks[0] || null;
+            paletteHand = results.multiHandLandmarks[1] || null;
+        } else {
+            for (let i = 0; i < results.multiHandLandmarks.length; i++) {
+                if (results.multiHandedness[i].label === 'Right') drawHand    = results.multiHandLandmarks[i];
+                else                                               paletteHand = results.multiHandLandmarks[i];
+            }
+            if (!drawHand && paletteHand && !togglePalette.checked) { drawHand = paletteHand; paletteHand = null; }
+        }
+    }
+
+    // Tony Stark holographic palette (left hand, single-hand mode only)
+    if (!toggleDualHand.checked && togglePalette.checked && paletteHand) {
+        drawConnectors(cursorCtx, paletteHand, HAND_CONNECTIONS, { color:'rgba(0,242,254,.2)', lineWidth:2 });
+        const tips = [4,8,12,16,20];
+        for (let i = 0; i < tips.length; i++) {
+            const tip = paletteHand[tips[i]];
+            const px = tip.x * cursorCanvas.width, py = tip.y * cursorCanvas.height;
+            cursorCtx.beginPath(); cursorCtx.arc(px, py, 15, 0, Math.PI*2);
+            cursorCtx.fillStyle=PALETTE_COLORS[i]; cursorCtx.shadowColor=PALETTE_COLORS[i];
+            cursorCtx.shadowBlur=glow(); cursorCtx.fill();
+            cursorCtx.lineWidth=2; cursorCtx.strokeStyle='white'; cursorCtx.stroke(); cursorCtx.shadowBlur=0;
+            if (drawHand) {
+                const rx = drawHand[8].x * cursorCanvas.width, ry = drawHand[8].y * cursorCanvas.height;
+                if (Math.hypot(px-rx, py-ry) < 30) {
+                    colorPicker.value = PALETTE_COLORS[i];
+                    colorPicker.dispatchEvent(new Event('input'));
+                    toggleRainbow.checked = false;
+                }
+            }
+        }
+    }
+
+    // Primary draw hand
+    if (drawHand) {
+        processDrawHand(drawHand, handState1);
+    } else {
+        releaseHandState(handState1);
+        if (!toggleDualHand.checked) updateStatus('No Right Hand Detected','#555555');
+    }
+
+    // Secondary draw hand (dual mode)
+    if (toggleDualHand.checked) {
+        if (paletteHand) processDrawHand(paletteHand, handState2);
+        else             releaseHandState(handState2);
+        if (!drawHand && !paletteHand) updateStatus('No Hands Detected','#555555');
+    }
+
+    // Face guide overlay — drawn here (not in onFaceResults) so it never flickers
+    if (toggleFacePaint.checked && toggleFaceGuide.checked && currentFaceLandmarks) {
+        drawFaceGuide(currentFaceLandmarks, cursorCanvas.width, cursorCanvas.height);
+    }
+}
+
+// ── MediaPipe & Camera ────────────────────────────────────────────────────────
+const hands = new Hands({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${f}` });
+hands.setOptions({ maxNumHands:2, modelComplexity:1, minDetectionConfidence:.7, minTrackingConfidence:.7 });
+hands.onResults(onResults);
+
+function onFaceResults(results) {
+    currentFaceLandmarks = results.multiFaceLandmarks?.[0] || null;
+    if (currentFaceLandmarks && faceStrokes.length > 0) needsBlit = true;
+}
+
+const faceMesh = new FaceMesh({ locateFile: f => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/${f}` });
+faceMesh.setOptions({ maxNumFaces:1, refineLandmarks:false, minDetectionConfidence:.5, minTrackingConfidence:.5 });
+faceMesh.onResults(onFaceResults);
+
+let faceMeshTick = 0;
+const camera = new Camera(videoElement, {
+    onFrame: async () => {
+        await hands.send({ image: videoElement });
+        // Run FaceMesh every 2nd frame — halves cost, face moves slowly enough to not matter
+        if (toggleFacePaint.checked && (++faceMeshTick % 2 === 0)) {
+            await faceMesh.send({ image: videoElement });
+        }
+    },
+    width: 1280, height: 720
+});
+camera.start().catch(err => {
+    console.error(err);
+    loadingDiv.innerText = 'Error: could not access camera. Please allow camera permissions and reload.';
+    loadingDiv.style.color = '#ff4444';
+});
+</script>
+</body>
+</html>
